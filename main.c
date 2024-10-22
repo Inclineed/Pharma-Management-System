@@ -12,6 +12,7 @@ struct Medicine{
 
 int med_write(struct Medicine *med,FILE* fptr){
     fprintf(fptr,"%s,%s,%d,%.2f,%s\n",med->name,med->batchnumber,med->quantity,med->price,med->expriyDate);
+    
 }
 
 int main(){
@@ -32,4 +33,8 @@ int main(){
     fprintf(fptr,"%s,%s,%s,%s,%s\n","Name","BatchNumber","Quantity","Price","Expiry Date");
     med_write(med,fptr);
     printf("%s\n%s\n%d\n%f\n%s",med->name,med->batchnumber,med->quantity,med->price,med->expriyDate);
+    
+    free(med);
+    fclose(fptr);
+    return 0;
 }
