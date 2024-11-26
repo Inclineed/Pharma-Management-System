@@ -13,9 +13,18 @@
 #define BLUE "\x1b[34m"
 #define MAGENTA "\x1b[35m"
 #define CYAN "\x1b[36m"
+#define MAGENTA "\x1b[35m"
+#define BRIGHT_RED "\x1b[91m"
+
+// Stock alert threshold (you can adjust this)
+#define LOW_STOCK_THRESHOLD 50
+#define NEAR_EXPIRY_DAYS 90 // Days before expiry to trigger alert
 
 // Global hash table
 MedicineNode *hashTable[TABLE_SIZE];
+
+Bill billTable[MAX_BILLS];
+int nextBillId = 1;
 
 // Hash function (djb2)
 unsigned int djb2Hash(const char *medicineName) {
@@ -236,9 +245,9 @@ void clearScreen() {
 // Print colorful header
 void printHeader() {
     clearScreen();
-    printf(CYAN "========================================================\n" RESET);
-    printf(GREEN "   🏥 Medicine Inventory Management System 💊\n" RESET);
-    printf(CYAN "========================================================\n" RESET);
+    printf(CYAN "=============================================\n" RESET);
+    printf(GREEN "    Medicine Inventory Management System \n" RESET);
+    printf(CYAN "=============================================\n" RESET);
 }
 
 // Print menu header
@@ -434,9 +443,318 @@ Medicine inputMedicineDetails() {
 void displayMedicine(Medicine medicine) {
     printf(CYAN "----------------------------------------\n" RESET);
     printf(GREEN "Medicine Name    : " RESET "%s\n", medicine.name);
-    printf(GREEN "Batch Number    : " RESET "%s\n", medicine.batchnumber);
-    printf(GREEN "Quantity        : " RESET "%d\n", medicine.quantity);
-    printf(GREEN "Price           : " RESET "₹%.2f\n", medicine.price);
-    printf(GREEN "Expiry Date     : " RESET "%s\n", medicine.expiryDate);
+    printf(GREEN "Batch Number     : " RESET "%s\n", medicine.batchnumber);
+    printf(GREEN "Quantity         : " RESET "%d\n", medicine.quantity);
+    printf(GREEN "Price            : " RESET "%.2f\n", medicine.price);
+    printf(GREEN "Expiry Date      : " RESET "%s\n", medicine.expiryDate);
     printf(CYAN "----------------------------------------\n" RESET);
+}
+
+Bill createBill(const char *customerName);
+int addBillItem(Bill *bill, const char *medicineName, int quantity);
+int saveBillToFile(const Bill *bill);
+Bill* findBillById(int billId);
+void displayBill(const Bill *bill);
+void listAllBills();
+
+// Create a new bill
+Bill createBill(const char *customerName) {
+    Bill newBill;
+    memset(&newBill, 0, sizeof(Bill));
+    
+    // Find next available bill slot
+    int index = -1;
+    for (int i = 0; i < MAX_BILLS; i++) {
+        if (!billTable[i].isOccupied) {
+            index = i;
+            break;
+        }
+    }
+    
+    if (index == -1) {
+        printf(RED "Error: Bill storage is full!\n" RESET);
+        newBill.isOccupied = 0;
+        return newBill;
+    }
+    
+    // Set bill details
+    strncpy(newBill.customerName, customerName, sizeof(newBill.customerName) - 1);
+    newBill.billId = nextBillId++;
+    
+    // Get current date
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    strftime(newBill.billDate, sizeof(newBill.billDate), "%d/%m/%Y", t);
+    
+    newBill.isOccupied = 1;
+    newBill.itemCount = 0;
+    newBill.totalBillAmount = 0.0;
+    
+    billTable[index] = newBill;
+    return newBill;
+}
+
+int updateMedicineQuantity(const char *medicineName, int newQuantity) {
+    // Find the existing medicine
+    MedicineSearchResult search = findMedicine(medicineName);
+    if (!search.found || search.count == 0) {
+        printf(RED "Medicine '%s' not found in inventory.\n" RESET, medicineName);
+        return -1;
+    }
+
+    // Get the first matching medicine (or handle multiple entries as needed)
+    Medicine medicine = search.medicines[0];
+    medicine.quantity = newQuantity;
+
+    // Remove the existing entry
+    deleteMedicine(medicineName);
+
+    // Re-insert with updated quantity
+    return insertMedicine(&medicine);
+}
+
+int addBillItem(Bill *bill, const char *medicineName, int quantity) {
+    if (!bill || !bill->isOccupied) {
+        return -1; // Invalid bill
+    }
+    
+    if (bill->itemCount >= MAX_BILL_ITEMS) {
+        printf(RED "Error: Maximum bill items reached.\n" RESET);
+        return -2;
+    }
+    
+    // Find medicine in inventory
+    MedicineSearchResult search = findMedicine(medicineName);
+    if (!search.found || search.count == 0) {
+        printf(RED "Medicine '%s' not found in inventory.\n" RESET, medicineName);
+        return -3;
+    }
+    
+    // Check total available quantity across all entries
+    int totalAvailableQuantity = 0;
+    for (int i = 0; i < search.count; i++) {
+        totalAvailableQuantity += search.medicines[i].quantity;
+    }
+    
+    // Check if total quantity is sufficient
+    if (totalAvailableQuantity < quantity) {
+        printf(RED "Insufficient stock across all entries. Available: %d, Requested: %d\n" RESET, 
+               totalAvailableQuantity, quantity);
+        return -4;
+    }
+    
+    // Create bill item
+    BillItem *item = &bill->items[bill->itemCount];
+    strncpy(item->medicineName, medicineName, sizeof(item->medicineName) - 1);
+    item->quantity = quantity;
+    
+    // Track how much quantity we still need to allocate
+    int remainingQuantity = quantity;
+    
+    // Systematically reduce quantities from different entries
+    for (int i = 0; i < search.count && remainingQuantity > 0; i++) {
+        // Get a copy of the medicine to modify
+        Medicine medicine = search.medicines[i];
+        
+        // Determine how much we can take from this entry
+        int quantityToTake = (medicine.quantity < remainingQuantity) ? 
+                              medicine.quantity : remainingQuantity;
+        
+        // Update medicine quantity using the existing function
+        int newQuantity = medicine.quantity - quantityToTake;
+        updateMedicineQuantity(medicine.name, newQuantity);
+        
+        remainingQuantity -= quantityToTake;
+        
+        // Set unit price from first entry for the whole bill item
+        if (i == 0) {
+            item->unitPrice = medicine.price;
+            item->totalPrice = quantity * medicine.price;
+            bill->totalBillAmount += item->totalPrice;
+        }
+    }
+    
+    bill->itemCount++;
+    
+    return bill->itemCount - 1; // Return index of added item
+}
+
+// Save bill to file
+int saveBillToFile(const Bill *bill) {
+    if (!bill || !bill->isOccupied) {
+        return -1; // Invalid bill
+    }
+    
+    FILE *file = fopen("bills.dat", "ab");
+    if (file == NULL) {
+        printf(RED "Error opening bill file.\n" RESET);
+        return -2;
+    }
+    
+    size_t written = fwrite(bill, sizeof(Bill), 1, file);
+    fclose(file);
+    
+    return (written == 1) ? 0 : -3;
+}
+
+// Find bill by ID
+Bill* findBillById(int billId) {
+    for (int i = 0; i < MAX_BILLS; i++) {
+        if (billTable[i].isOccupied && billTable[i].billId == billId) {
+            return &billTable[i];
+        }
+    }
+    return NULL;
+}
+
+// Display a single bill
+void displayBill(const Bill *bill) {
+    if (!bill || !bill->isOccupied) {
+        printf(RED "Invalid bill.\n" RESET);
+        return;
+    }
+    
+    printf(CYAN "========== BILL ==========\n" RESET);
+    printf(GREEN "Bill ID     : " RESET "%d\n", bill->billId);
+    printf(GREEN "Customer    : " RESET "%s\n", bill->customerName);
+    printf(GREEN "Date        : " RESET "%s\n", bill->billDate);
+    printf(CYAN "--------- ITEMS ---------\n" RESET);
+    
+    for (int i = 0; i < bill->itemCount; i++) {
+        const BillItem *item = &bill->items[i];
+        printf(BLUE "%-20s " RESET, item->medicineName);
+        printf("%3d x %-8.2f = %.2f\n", 
+               item->quantity, item->unitPrice, item->totalPrice);
+    }
+    
+    printf(CYAN "-------------------------\n" RESET);
+    printf(GREEN "Total Amount: " RESET "%.2f\n", bill->totalBillAmount);
+    printf(CYAN "=========================\n" RESET);
+}
+
+// List all bills
+void listAllBills() {
+    int billCount = 0;
+    
+    printf(CYAN "========== ALL BILLS ==========\n" RESET);
+    
+    for (int i = 0; i < MAX_BILLS; i++) {
+        if (billTable[i].isOccupied) {
+            displayBill(&billTable[i]);
+            billCount++;
+        }
+    }
+    
+    if (billCount == 0) {
+        printf(YELLOW "No bills found.\n" RESET);
+    }
+    
+    printf(CYAN "Total Bills: %d\n" RESET, billCount);
+}
+
+// Load existing bills from file
+int loadBillsFromFile() {
+    FILE *file = fopen("bills.dat", "rb");
+    if (file == NULL) {
+        return -1; // File not found or error opening
+    }
+
+    int billsLoaded = 0;
+    Bill bill;
+    
+    while (fread(&bill, sizeof(Bill), 1, file)) {
+        if (bill.isOccupied) {
+            // Find first empty slot in bill table
+            int index = -1;
+            for (int i = 0; i < MAX_BILLS; i++) {
+                if (!billTable[i].isOccupied) {
+                    index = i;
+                    break;
+                }
+            }
+            
+            if (index != -1) {
+                billTable[index] = bill;
+                nextBillId = (bill.billId >= nextBillId) ? (bill.billId + 1) : nextBillId;
+                billsLoaded++;
+            }
+        }
+    }
+
+    fclose(file);
+    return billsLoaded;
+}
+
+// Function to get current date
+void getCurrentDate(char *currentDate) {
+    time_t now = time(NULL);
+    struct tm *t = localtime(&now);
+    strftime(currentDate, 20, "%d/%m/%Y", t);
+}
+
+// Function to calculate days between two dates
+int daysBetweenDates(const char *date1, const char *date2) {
+    struct tm tm1 = {0}, tm2 = {0};
+    
+    sscanf(date1, "%d/%d/%d", &tm1.tm_mday, &tm1.tm_mon, &tm1.tm_year);
+    sscanf(date2, "%d/%d/%d", &tm2.tm_mday, &tm2.tm_mon, &tm2.tm_year);
+    
+    // Adjust for tm struct requirements
+    tm1.tm_mon -= 1;
+    tm1.tm_year -= 1900;
+    tm2.tm_mon -= 1;
+    tm2.tm_year -= 1900;
+    
+    // Convert to time_t
+    time_t time1 = mktime(&tm1);
+    time_t time2 = mktime(&tm2);
+    
+    // Calculate difference in seconds and convert to days
+    double seconds = difftime(time2, time1);
+    return (int)(seconds / (60 * 60 * 24));
+}
+
+// Function to check stock and expiry alerts
+void checkInventoryAlerts() {
+    char currentDate[20];
+    getCurrentDate(currentDate);
+    
+    int lowStockCount = 0;
+    int nearExpiryCount = 0;
+    
+    printf(CYAN "\n========== INVENTORY ALERTS ==========\n" RESET);
+    
+    // Iterate through hash table
+    for (int i = 0; i < TABLE_SIZE; i++) {
+        MedicineNode *current = hashTable[i];
+        
+        while (current != NULL) {
+            Medicine *medicine = &current->data;
+            
+            // Check for low stock
+            if (medicine->quantity <= LOW_STOCK_THRESHOLD) {
+                printf(MAGENTA "LOW STOCK ALERT: " RESET);
+                printf("%s - Current Stock: %d\n", 
+                       medicine->name, medicine->quantity);
+                lowStockCount++;
+            }
+            
+            // Check for near expiry
+            int daysToExpiry = daysBetweenDates(currentDate, medicine->expiryDate);
+            if (daysToExpiry <= NEAR_EXPIRY_DAYS) {
+                printf(BRIGHT_RED "EXPIRY ALERT: " RESET);
+                printf("%s - Expires on %s (In %d days)\n", 
+                       medicine->name, medicine->expiryDate, daysToExpiry);
+                nearExpiryCount++;
+            }
+            
+            current = current->next;
+        }
+    }
+    
+    // Summary
+    printf(CYAN "------------------------------\n" RESET);
+    printf(MAGENTA "Total Low Stock Items: %d\n" RESET, lowStockCount);
+    printf(BRIGHT_RED "Total Near Expiry Items: %d\n" RESET, nearExpiryCount);
+    printf(CYAN "===================================\n" RESET);
 }

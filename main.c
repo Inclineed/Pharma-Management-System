@@ -1,5 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <time.h>
 #include "functions.h"
 
 // ANSI Color Codes
@@ -20,18 +22,112 @@ int main() {
 
     // Load existing data from file
     int loadedRecords = loadFromFile();
+
+    // Sample Data
+    Medicine medicines[] = {
+        {
+            .name = "Paracetamol",
+            .batchnumber = "PAR2024001",
+            .quantity = 500,
+            .price = 25.50,
+            .expiryDate = "31/12/2024",
+            .isOccupied = 1
+        },
+        {
+            .name = "Amoxicillin",
+            .batchnumber = "AMX2024002",
+            .quantity = 250,
+            .price = 175.75,
+            .expiryDate = "30/06/2025",
+            .isOccupied = 1
+        },
+        {
+            .name = "Insulin Glargine",
+            .batchnumber = "INS2024003",
+            .quantity = 100,
+            .price = 850.00,
+            .expiryDate = "28/02/2025",
+            .isOccupied = 1
+        },
+        {
+            .name = "Ibuprofen",
+            .batchnumber = "IBU2024004",
+            .quantity = 750,
+            .price = 45.25,
+            .expiryDate = "15/11/2025",
+            .isOccupied = 1
+        },
+        {
+            .name = "Metformin",
+            .batchnumber = "MET2024005",
+            .quantity = 600,
+            .price = 95.50,
+            .expiryDate = "20/09/2025",
+            .isOccupied = 1
+        },
+        {
+            .name = "Ciprofloxacin",
+            .batchnumber = "CIP2024006",
+            .quantity = 300,
+            .price = 125.75,
+            .expiryDate = "10/07/2025",
+            .isOccupied = 1
+        },
+        {
+            .name = "Losartan",
+            .batchnumber = "LOS2024007",
+            .quantity = 450,
+            .price = 55.25,
+            .expiryDate = "25/12/2025",
+            .isOccupied = 1
+        },
+        {
+            .name = "Azithromycin",
+            .batchnumber = "AZI2024008",
+            .quantity = 200,
+            .price = 210.50,
+            .expiryDate = "15/08/2025",
+            .isOccupied = 1
+        },
+        {
+            .name = "Pantoprazole",
+            .batchnumber = "PAN2024009",
+            .quantity = 350,
+            .price = 85.75,
+            .expiryDate = "30/10/2025",
+            .isOccupied = 1
+        },
+        {
+            .name = "Levothyroxine",
+            .batchnumber = "LEV2024010",
+            .quantity = 275,
+            .price = 125.00,
+            .expiryDate = "20/06/2025",
+            .isOccupied = 1
+        }
+    };
+
+    // To add these to the hash table, you could use a loop:
+    for (int i = 0; i < sizeof(medicines) / sizeof(medicines[0]); i++) {
+        insertMedicine(&medicines[i]);
+    }
     
+    // Add this near the top of main(), after loading medicine records
+    int loadedBills = loadBillsFromFile();
+    printf(YELLOW "Loaded Bills: %d\n" RESET, loadedBills);
     int choice;
     while (1) {
         printHeader();
         printMenuHeader();
         
         // Enhanced menu with emojis
-        printf(GREEN "1. 💊 Add New Medicine\n" RESET);
-        printf(GREEN "2. 🔍 Find Medicine\n" RESET);
-        printf(GREEN "3. ❌ Delete Medicine\n" RESET);
-        printf(GREEN "4. 📋 View All Medicines\n" RESET);
-        printf(GREEN "5. 💾 Save and Exit\n" RESET);
+        printf(GREEN "1. Add New Medicine\n" RESET);
+        printf(GREEN "2. Find Medicine\n" RESET);
+        printf(GREEN "3. Delete Medicine\n" RESET);
+        printf(GREEN "4. View All Medicines\n" RESET);
+        printf(GREEN "5. Billing Menu\n" RESET);
+        printf(GREEN "6. Check Inventory Alerts" RESET "\n");
+        printf(GREEN "7. Save and Exit\n" RESET);
         printf(YELLOW "Loaded Records: %d\n" RESET, loadedRecords);
         
         choice = getValidInteger("Enter your choice: ");
@@ -44,16 +140,16 @@ int main() {
                 printHeader();
                 switch (result) {
                     case 0:
-                        printf(GREEN "✅ Medicine inserted successfully!\n" RESET);
+                        printf(GREEN "Medicine inserted successfully!\n" RESET);
                         break;
                     case 1:
-                        printf(YELLOW "⚠️ Medicine added to existing entry.\n" RESET);
+                        printf(YELLOW "Medicine added to existing entry.\n" RESET);
                         break;
                     case -2:
-                        printf(RED "❌ Memory allocation failed.\n" RESET);
+                        printf(RED "Memory allocation failed.\n" RESET);
                         break;
                     case -3:
-                        printf(RED "❌ Hash table is full.\n" RESET);
+                        printf(RED "Hash table is full.\n" RESET);
                         break;
                 }
                 pressAnyKeyToContinue();
@@ -77,12 +173,12 @@ int main() {
                 
                 printHeader();
                 if (result.found) {
-                    printf(GREEN "✅ Found %d matching medicine(s):\n" RESET, result.count);
+                    printf(GREEN "Found %d matching medicine(s):\n" RESET, result.count);
                     for (int i = 0; i < result.count; i++) {
                         displayMedicine(result.medicines[i]);
                     }
                 } else {
-                    printf(RED "❌ Medicine not found.\n" RESET);
+                    printf(RED "Medicine not found.\n" RESET);
                 }
                 pressAnyKeyToContinue();
                 break;
@@ -106,10 +202,10 @@ int main() {
                 printHeader();
                 switch (result) {
                     case 0:
-                        printf(GREEN "✅ Medicine deleted successfully!\n" RESET);
+                        printf(GREEN "Medicine deleted successfully!\n" RESET);
                         break;
                     case -2:
-                        printf(RED "❌ Medicine not found.\n" RESET);
+                        printf(RED "Medicine not found.\n" RESET);
                         break;
                 }
                 pressAnyKeyToContinue();
@@ -123,9 +219,9 @@ int main() {
                 MedicineList allMedicines = getAllRecords();
                 
                 if (allMedicines.count == 0) {
-                    printf(YELLOW "📭 No medicines in the inventory.\n" RESET);
+                    printf(YELLOW "No medicines in the inventory.\n" RESET);
                 } else {
-                    printf(GREEN "📦 Total Medicines: %d\n" RESET, allMedicines.count);
+                    printf(GREEN "Total Medicines: %d\n" RESET, allMedicines.count);
                     for (int i = 0; i < allMedicines.count; i++) {
                         displayMedicine(allMedicines.medicines[i]);
                     }
@@ -134,19 +230,81 @@ int main() {
                 break;
             }
 
-            case 5: { // Save and Exit
+            // In your main menu switch statement
+            case 5: // Example billing menu
+                printf(YELLOW "\n--- BILLING MENU ---\n" RESET);
+                printf("1. Create New Bill\n");
+                printf("2. View Specific Bill\n");
+                printf("3. List All Bills\n");
+                printf("4. Return to Main Menu\n");
+
+                int billingChoice = getValidInteger("Enter your choice: ");
+                switch (billingChoice) {
+                    case 1: {
+                        char customerName[100];
+                        printf(BLUE "Enter Customer Name: " RESET);
+                        fgets(customerName, sizeof(customerName), stdin);
+                        customerName[strcspn(customerName, "\n")] = 0;
+                        
+                        Bill newBill = createBill(customerName);
+                        if (newBill.isOccupied) {
+                            // Add items to bill
+                            while (1) {
+                                char medicineName[50];
+                                printf(BLUE "Enter Medicine Name (or 'done' to finish): " RESET);
+                                fgets(medicineName, sizeof(medicineName), stdin);
+                                medicineName[strcspn(medicineName, "\n")] = 0;
+                                
+                                if (strcmp(medicineName, "done") == 0) break;
+                                
+                                int quantity = getValidInteger("Enter Quantity: ");
+                                addBillItem(&newBill, medicineName, quantity);
+                            }
+                            
+                            // Display and save bill
+                            displayBill(&newBill);
+                            saveBillToFile(&newBill);
+                        }
+                        break;
+                    }
+                    case 2: {
+                        int billId = getValidInteger("Enter Bill ID to view: ");
+                        Bill *bill = findBillById(billId);
+                        if (bill) {
+                            displayBill(bill);
+                        } else {
+                            printf(RED "Bill not found.\n" RESET);
+                        }
+                        break;
+                    }
+                    case 3:
+                        listAllBills();
+                        break;
+                }
+                pressAnyKeyToContinue();
+                break;
+
+            case 6:
+                checkInventoryAlerts();
+                pressAnyKeyToContinue();
+                break;
+
+            case 7: { // Save and Exit
                 int savedRecords = saveToFile();
                 printHeader();
-                printf(GREEN "✅ Saved %d records to file.\n" RESET, savedRecords);
-                printf(YELLOW "👋 Exiting the program. Goodbye!\n" RESET);
+                printf(GREEN "Saved %d records to file.\n" RESET, savedRecords);
+                printf(YELLOW "Exiting the program. Goodbye!\n" RESET);
                 return 0;
             }
+            
 
             default:
-                printf(RED "❌ Invalid choice. Please try again.\n" RESET);
+                printf(RED "Invalid choice. Please try again.\n" RESET);
                 pressAnyKeyToContinue();
         }
     }
+
+    
 
     return 0;
 }
